@@ -1,0 +1,137 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata:
+  License: MIT
+Transform: AWS::Serverless-2016-10-31
+Description: 'Okta hackauth0n 2021
+
+  Automated Active Directory Domain Controller environment creation for Sales Engineering
+  candidate technical challenges.
+
+  created by Chris Concannon
+
+  '
+Globals:
+  Function:
+    Timeout: 180
+Parameters:
+  EnrollmentToken:
+    Type: String
+    Description: Enter the ASA enrollment token for this gateway
+  KeyName:
+    Type: String
+    Description: Enter the KeyPair Name to SSH into this instance
+  LatestAmiId:
+    Type: AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>
+    Default: /aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2
+  AllowedIpRange:
+    Type: String
+    Description: Enter the CIDR notation for allowed IP addresses (i.e. xxx.xxx.xxx.xxx/32
+      or 0.0.0.0/0)
+Resources:
+  InstanceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Enable ASA access
+      SecurityGroupIngress:
+      - IpProtocol: tcp
+        FromPort: 7234
+        ToPort: 7234
+        CidrIp: '0.0.0.0/0'
+      - IpProtocol: tcp
+        FromPort: 22
+        ToPort: 22
+        CidrIp: '0.0.0.0/0'
+  AsaBastion:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId:
+        Ref: LatestAmiId
+      InstanceType: t2.micro
+      KeyName:
+        Ref: KeyName
+      SecurityGroups:
+      - Ref: InstanceSecurityGroup
+      UserData:
+        Fn::Base64:
+          Fn::Sub: '#!/bin/bash -xe
+
+            mkdir -p /var/lib/sftd
+
+            echo ''${EnrollmentToken}'' > /var/lib/sftd/enrollment.token
+
+            curl -C - https://pkg.scaleft.com/scaleft_yum.repo | sudo tee /etc/yum.repos.d/scaleft.repo
+
+            sudo rpm --import https://dist.scaleft.com/pki/scaleft_rpm_key.asc
+
+            sudo yum install scaleft-server-tools -y
+
+            '
+      Tags:
+      - Key: Name
+        Value:
+          Ref: AWS::StackName
+  LambdaCloudformationRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service:
+            - cloudformation.amazonaws.com
+            - lambda.amazonaws.com
+          Action:
+          - sts:AssumeRole
+  CreateCandidateEnvFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: CreateCandidateEnvFunction
+      Handler: createStack
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /createStack
+            Method: GET
+      Environment:
+        Variables:
+          STACK_TEMPLATE_URL: https://concoktacloudformations.s3.us-west-1.amazonaws.com/workforce.biz-restricted-domain-controller.yml
+          ALLOWED_IP_CIDR_RANGE: '0.0.0.0/0'
+      Role:
+        Fn::GetAtt:
+        - LambdaCloudformationRole
+        - Arn
+  DeleteCandidateEnvFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: DeleteCandidateEnvFunction
+      Handler: deleteStack
+      Runtime: go1.x
+      Tracing: Active
+      Events:
+        CatchAll:
+          Type: Api
+          Properties:
+            Path: /deleteStack
+            Method: GET
+      Role:
+        Fn::GetAtt:
+        - LambdaCloudformationRole
+        - Arn
+Outputs:
+  CreateEndpoint:
+    Description: API Gateway endpoint URL for Prod environment for CreateStack function
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/createStack?stackName=insert_stack_name
+  DeleteEndpoint:
+    Description: API Gateway endpoint URL for Prod environment for DeleteStack function
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/deleteStack?stackName=insert_stack_name
+  PublicIP:
+    Description: Public IP address of the ASA Bastion
+    Value:
+      Fn::GetAtt:
+      - AsaBastion
+      - PublicIp

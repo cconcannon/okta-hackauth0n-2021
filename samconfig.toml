@@ -1,0 +1,11 @@
+version = 0.1
+[default]
+[default.deploy]
+[default.deploy.parameters]
+stack_name = "hackauth0n-tuesday-541pm"
+s3_bucket = "aws-sam-cli-managed-default-samclisourcebucket-t3vauwk9uu71"
+s3_prefix = "hackauth0n-tuesday-541pm"
+region = "us-west-1"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "EnrollmentToken=\": eyJzIjoiNDZjZGMyMGUtOTgxMC00NTIyLWEyYjEtN2MwNjAyYWJmZTY4IiwidSI6Imh0dHBzOi8vYXBwLnNjYWxlZnQuY29tIn0=\" KeyName=\"asa-bastion-image-kp\" LatestAmiId=\"/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2\" AllowedIpRange=\"0.0.0.0/0\""
+image_repositories = []
