@@ -1,17 +1,12 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Metadata: 
   License: MIT
-Transform: AWS::Serverless-2016-10-31
 Description: >
   Okta hackauth0n 2021
 
   Automated Active Directory Domain Controller environment creation for Sales Engineering candidate technical challenges.
   
   created by Chris Concannon
-
-Globals:
-  Function:
-    Timeout: 180
 Parameters:
   EnrollmentToken:
     Type: String
@@ -22,9 +17,6 @@ Parameters:
   LatestAmiId:
     Type: 'AWS::SSM::Parameter::Value<AWS::EC2::Image::Id>'
     Default: '/aws/service/ami-amazon-linux-latest/amzn2-ami-hvm-x86_64-gp2'
-  AllowedIpRange:
-    Type: String
-    Description: Enter the CIDR notation for allowed IP addresses (i.e. xxx.xxx.xxx.xxx/32 or 0.0.0.0/0)
 Resources:
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
@@ -59,83 +51,67 @@ Resources:
         - Key: Name
           Value: !Ref 'AWS::StackName'
   LambdaCloudformationRole:
-    Type: AWS::IAM::Role
+    Type: 'AWS::IAM::Role'
     Properties:
-      AssumeRolePolicyDocument: {
-        Statement: [
-          {
-            "Effect": "Allow",
-            "Principal": {
-              "Service": [
-                "cloudformation.amazonaws.com",
-                "lambda.amazonaws.com"
-              ]
-            },
-            "Action": ["sts:AssumeRole"]
-          }
-        ]
-      }
-  CandidateEnvApi:
-    Type: AWS::Serverless::Api
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - cloudformation.amazonaws.com
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+  CloudformationCrudPolicy:
+    Type: 'AWS::IAM::Policy'
     Properties:
-      Auth:
-        ApiKeyRequired: true
-        UsagePlan:
-          CreateUsagePlan: PER_API
-          Description: Candidate Environment API Usage Plan
-          Quota:
-            Limit: 100
-            Period: MONTH
-          Throttle:
-            BurstLimit: 10
-            RateLimit: 10
-      StageName: Prod
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Action:
+              - 'cloudformation:Describe*'
+              - 'cloudformation:List*'
+              - 'cloudformation:Create*'
+              - 'cloudformation:Delete*'
+              - 'ec2:Create*'
+              - 'ec2:Describe*'
+              - 'ec2:Authorize*'
+              - 'ec2:RunInstances'
+            Resource: '*'
+      PolicyName: CandidateCloudformationCrudPolicy
+      Roles:
+        - !Ref CloudformationRole
+  CloudformationRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - '*'
+            Action:
+              - 'sts:AssumeRole'
   CreateCandidateEnvFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
+    Type: AWS::Lambda::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
     Properties:
-      CodeUri: createStack/
-      Handler: createStack
       Runtime: go1.x
-      Tracing: Active # https://docs.aws.amazon.com/lambda/latest/dg/lambda-x-ray.html
-      Events:
-        CatchAll:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            Path: /createStack
-            Method: POST
-            Auth:
-              ApiKeyRequired: true
-            RestApiId: !Ref CandidateEnvApi
+      Handler: main
+      Role: !GetAtt LambdaCloudformationRole.Arn
+      Code:
+        S3Bucket: cconcannon-public-zip
+        S3Key: createStack.zip
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
           STACK_TEMPLATE_URL: https://concoktacloudformations.s3.us-west-1.amazonaws.com/workforce.biz-restricted-domain-controller.yml
           ALLOWED_IP_CIDR_RANGE: 0.0.0.0/0
           # ALLOWED_IP_CIDR_RANGE: !GetAtt AsaBastion.PublicIp
-      Role: !GetAtt LambdaCloudformationRole.Arn
-  DeleteCandidateEnvFunction:
-    Type: AWS::Serverless::Function # More info about Function Resource: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#awsserverlessfunction
-    Properties:
-      CodeUri: deleteStack/
-      Handler: deleteStack
-      Runtime: go1.x
-      Tracing: Active # https://docs.aws.amazon.com/lambda/latest/dg/lambda-x-ray.html
-      Events:
-        CatchAll:
-          Type: Api # More info about API Event Source: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#api
-          Properties:
-            Path: /deleteStack
-            Method: POST
-            Auth:
-              ApiKeyRequired: true
-            RestApiId: !Ref CandidateEnvApi
-      Role: !GetAtt LambdaCloudformationRole.Arn
+          ROLE_ARN: !GetAtt CloudformationRole.Arn
+      Timeout: 180
 Outputs:
-  CreateEndpoint:
-    Description: "API Gateway endpoint URL for Prod environment for CreateStack function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/createStack?stackName=insert_stack_name"
-  DeleteEndpoint:
-    Description: "API Gateway endpoint URL for Prod environment for DeleteStack function"
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/deleteStack?stackName=insert_stack_name"
   PublicIP:
     Description: Public IP address of the ASA Bastion
     Value: !GetAtt AsaBastion.PublicIp
