@@ -21,11 +21,11 @@ Resources:
   InstanceSecurityGroup:
     Type: 'AWS::EC2::SecurityGroup'
     Properties:
-      GroupDescription: Enable ASA access
+      GroupDescription: Enable ASA access and port forwarding for RDP
       SecurityGroupIngress:
         - IpProtocol: tcp
-          FromPort: 7234
-          ToPort: 7234
+          FromPort: 1024
+          ToPort: 65535
           CidrIp: 0.0.0.0/0
         - IpProtocol: tcp
           FromPort: 22
@@ -47,6 +47,9 @@ Resources:
            curl -C - https://pkg.scaleft.com/scaleft_yum.repo | sudo tee /etc/yum.repos.d/scaleft.repo
            sudo rpm --import https://dist.scaleft.com/pki/scaleft_rpm_key.asc
            sudo yum install scaleft-server-tools -y
+           sudo yum groupinstall "Development Tools" -y
+           git clone https://github.com/vzaliva/simpleproxy.git
+           cd simpleproxy && ./configure && sudo make install
       Tags:
         - Key: Name
           Value: !Ref 'AWS::StackName'
@@ -106,9 +109,10 @@ Resources:
         S3Key: createStack.zip
       Environment: # More info about Env Vars: https://github.com/awslabs/serverless-application-model/blob/master/versions/2016-10-31.md#environment-object
         Variables:
+          # the STACK_TEMPLATE_URL is the url where the target template
+          # exists to create demo environments
           STACK_TEMPLATE_URL: https://concoktacloudformations.s3.us-west-1.amazonaws.com/workforce.biz-restricted-domain-controller.yml
-          ALLOWED_IP_CIDR_RANGE: 0.0.0.0/0
-          # ALLOWED_IP_CIDR_RANGE: !GetAtt AsaBastion.PublicIp
+          ALLOWED_IP_CIDR_RANGE: !Join [ '/', [!GetAtt AsaBastion.PublicIp, 32]]
           ROLE_ARN: !GetAtt CloudformationRole.Arn
       Timeout: 180
 Outputs:

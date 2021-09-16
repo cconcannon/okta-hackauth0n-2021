@@ -1,0 +1,34 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata: 
+  License: MIT
+Parameters:
+  AllowedIpRange:
+    Type: String
+    Description: Enter the CIDR notation of allowed IP address(es)
+Resources:
+  InstanceSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      GroupDescription: Enable RDP access
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3389
+          ToPort: 3389
+          CidrIp: !Ref AllowedIpRange
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      # the ImageId below is publicly available in us-west-1
+      # it contains a minimally-configured Microsoft Domain Controller
+      # with users and groups configured in an Active Directory service
+      ImageId: ami-05879bc7d347fa32c
+      SecurityGroups:
+        - !Ref InstanceSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Ref 'AWS::StackName'
+Outputs:
+  PublicIP:
+    Description: Public IP address of the newly created EC2 instance
+    Value: !GetAtt EC2Instance.PublicIp
