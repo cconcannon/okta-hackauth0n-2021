@@ -8,6 +8,47 @@ The idea is to provide a quick way to launch any number of pre-configured Micros
 
 The practical use of this is to integrate it with Okta workflows. Workflows can trigger the deployed Lambda functions. With an Okta workflow, something as simple as a user creation or group assignment can kick off the spin-up of an entire demo environment.
 
+## ASA Server Enrollment
+
+ASA Enrollment of the bastion server occurs automatically, so long as a valid `EnrollmentToken` is provided when launching the Cloudformation template.
+
+The `template.yml` in the root folder creates resource `AsaBastion` and enrolls an AWS Linux ami in Okta's Advanced Server Access with the EnrollmentToken provided as an input param. The script below shows how this occurs.
+
+```shell
+mkdir -p /var/lib/sftd
+echo '${EnrollmentToken}' > /var/lib/sftd/enrollment.token
+curl -C - https://pkg.scaleft.com/scaleft_yum.repo | sudo tee /etc/yum.repos.d/scaleft.repo
+sudo rpm --import https://dist.scaleft.com/pki/scaleft_rpm_key.asc
+sudo yum install scaleft-server-tools -y
+sudo yum groupinstall "Development Tools" -y
+git clone https://github.com/vzaliva/simpleproxy.git
+cd simpleproxy && ./configure && sudo make install
+```
+
+## Using Workflows to invoke the Lambda
+
+The Lambda function expects an object in the payload with a single param:
+```json
+{
+    "stackName": "demo-microsoft-server-stack-12345"
+}
+```
+
+Each stack name must be unique, so it is recommended to include a timestamp or uuid in the stackName. **As a best practice, include a descriptor of the principal or event which caused the invocation of the Lambda function in the `stackName` - this way you can recognize the purpose of the stack in the future.**
+
+A workflow can be created to form a `stackName`, then invoke the Lambda function to launch the Microsoft server
+
+## Using the bastion as a TCP proxy
+
+The script above also installs the `simpleproxy` package from source. Use the `simpleproxy` package to open a TCP proxy to the Microsoft servers that are launched by invoking the `createStack` Lambda function with the following command:
+
+```shell
+# Forward bastion server port 3000 to the Microsoft server RDP port 3389
+simpleproxy -L 3000 -R {msft-server-ip}:3389
+```
+
+Once you've authenticated via ASA and started the TCP proxy, you can use an RDP client on your local machine to connect to {bastion-ip}:3000 - your RDP client will connect to the target Microsoft server.
+
 ## TODO
 
 I ran out of time before I could write a `deleteStack` function and create another workflow for it, which triggers stack tear-down when a user is removed from the target group... that should come next.
